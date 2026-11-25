@@ -1,0 +1,55 @@
+# Nom fixe du projet (identique en manuel et dans Jenkins)
+name: gestion-projets
+
+services:
+  # ---------- Base de données MySQL ----------
+  mysql-db:
+    image: mysql:8.0
+    container_name: mysql-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test_db
+    volumes:
+      - mysql-data:/var/lib/mysql      # Volume persistant (contrainte 3)
+    networks:
+      - app-network                    # Réseau dédié (contrainte 4)
+    healthcheck:                       # Vérifie que MySQL est vraiment prêt
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Backend Spring Boot ----------
+  backend:
+    build: ./backend
+    container_name: backend
+    environment:
+      # Remplace localhost par le nom du service MySQL
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/test_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+    ports:
+      - "8089:8080"                    # 8080 est déjà pris par Jenkins
+    depends_on:
+      mysql-db:
+        condition: service_healthy     # Démarre après MySQL (contrainte 1)
+    networks:
+      - app-network
+
+  # ---------- Frontend Angular (Nginx) ----------
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend                        # Démarre après le backend (contrainte 2)
+    networks:
+      - app-network
+
+volumes:
+  mysql-data:
+
+networks:
+  app-network:
+    driver: bridge
